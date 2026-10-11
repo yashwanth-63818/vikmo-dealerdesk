@@ -8,7 +8,7 @@ from django.db.models import Q
 from .models import Product, Inventory, Dealer, Order, IdempotencyRecord
 from .serializers import (
     ProductSerializer, InventoryUpdateSerializer, DealerSerializer,
-    OrderInputSerializer, OrderOutputSerializer
+    OrderInputSerializer, OrderUpdateInputSerializer, OrderOutputSerializer
 )
 from .services import (
     create_draft_order, update_draft_order, confirm_order,
@@ -38,8 +38,8 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         if search:
             queryset = queryset.filter(
-                Q(sku__icontains=search) | 
-                Q(name__icontains=search) | 
+                Q(sku__icontains=search) |
+                Q(name__icontains=search) |
                 Q(brand__icontains=search)
             )
         if category:
@@ -51,7 +51,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-    
+
     def update(self, request, *args, **kwargs):
         if not kwargs.get('partial', False):
             return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -63,17 +63,14 @@ class InventoryUpdateView(views.APIView):
             product = Product.objects.get(sku=sku)
         except Product.DoesNotExist:
             raise CustomAPIException('NOT_FOUND', 'Product not found', status.HTTP_404_NOT_FOUND)
-            
+
         serializer = InventoryUpdateSerializer(data=request.data)
-        if serializer.is_valid():
-            with transaction.atomic():
-                inventory, _ = Inventory.objects.get_or_create(product=product)
-                inventory.quantity = serializer.validated_data['quantity']
-                inventory.save()
-            return Response({'sku': sku, 'quantity': inventory.quantity})
-        else:
-            # We rely on the custom exception handler to format validation errors
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            inventory, _ = Inventory.objects.get_or_create(product=product)
+            inventory.quantity = serializer.validated_data['quantity']
+            inventory.save()
+        return Response({'sku': sku, 'quantity': inventory.quantity})
 
 class DealerViewSet(viewsets.ModelViewSet):
     queryset = Dealer.objects.all().order_by('id')
@@ -82,7 +79,7 @@ class DealerViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        
+
     def destroy(self, request, *args, **kwargs):
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
@@ -96,12 +93,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         dealer_id = self.request.query_params.get('dealer_id', None)
         status_filter = self.request.query_params.get('status', None)
-        
+
         if dealer_id:
             queryset = queryset.filter(dealer_id=dealer_id)
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-            
+
         return queryset.order_by('-created_at')
 
     def create(self, request, *args, **kwargs):
@@ -124,23 +121,18 @@ class OrderViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             if idem_key:
                 record = IdempotencyRecord.objects.select_for_update().get(key=idem_key)
+                if record.request_hash != request_hash:
+                    raise CustomAPIException('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different request body', status.HTTP_409_CONFLICT)
                 r_status = int(record.response_status)
                 if r_status != 0:
-                    if record.request_hash != request_hash:
-                        raise CustomAPIException('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different request body', status.HTTP_409_CONFLICT)
                     return Response(record.response_body, status=r_status)
 
             serializer = OrderInputSerializer(data=request.data)
-            if not serializer.is_valid():
-                if idem_key:
-                    record.response_status = status.HTTP_400_BAD_REQUEST
-                    record.response_body = serializer.errors
-                    record.save()
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            serializer.is_valid(raise_exception=True)
 
             order = create_draft_order(serializer.validated_data)
             output = OrderOutputSerializer(order).data
-            
+
             if idem_key:
                 record.response_status = status.HTTP_201_CREATED
                 record.response_body = output
@@ -152,39 +144,38 @@ class OrderViewSet(viewsets.ModelViewSet):
         # We only support PUT (full update of items) as per contract
         if kwargs.get('partial', False):
             return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-            
+
         order = self.get_object()
-        
-        serializer = OrderInputSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        serializer = OrderUpdateInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
         updated_order = update_draft_order(order, serializer.validated_data)
         output = OrderOutputSerializer(updated_order).data
-        
+
         return Response(output)
 
     def destroy(self, request, *args, **kwargs):
         return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        
+
     @action(detail=True, methods=['post'])
     def confirm(self, request, order_number=None):
         order = self.get_object()
         updated_order = confirm_order(order)
         return Response(OrderOutputSerializer(updated_order).data)
-        
+
     @action(detail=True, methods=['post'], url_path='dispatch')
     def dispatch_order_action(self, request, order_number=None):
         order = self.get_object()
         updated_order = dispatch_order(order)
         return Response(OrderOutputSerializer(updated_order).data)
-        
+
     @action(detail=True, methods=['post'])
     def deliver(self, request, order_number=None):
         order = self.get_object()
         updated_order = deliver_order(order)
         return Response(OrderOutputSerializer(updated_order).data)
-        
+
     @action(detail=True, methods=['post'])
     def cancel(self, request, order_number=None):
         order = self.get_object()

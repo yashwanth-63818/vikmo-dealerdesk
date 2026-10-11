@@ -4,12 +4,17 @@ import decimal
 
 class ProductSerializer(serializers.ModelSerializer):
     sku = serializers.CharField(max_length=50)
-    stock = serializers.IntegerField(source='inventory.quantity', read_only=True)
+    stock = serializers.SerializerMethodField()
     price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=decimal.Decimal('0.01'))
 
     class Meta:
         model = Product
         fields = ['sku', 'name', 'category', 'brand', 'vehicle_fitment', 'price', 'stock', 'description']
+
+    def get_stock(self, obj):
+        if hasattr(obj, 'inventory') and obj.inventory is not None:
+            return obj.inventory.quantity
+        return 0
 
     def create(self, validated_data):
         product = Product.objects.create(**validated_data)
@@ -22,7 +27,7 @@ class InventoryUpdateSerializer(serializers.Serializer):
 
 class DealerSerializer(serializers.ModelSerializer):
     dealer_code = serializers.CharField(max_length=50)
-    
+
     class Meta:
         model = Dealer
         fields = ['id', 'dealer_code', 'name', 'city', 'phone', 'email', 'gstin', 'credit_limit']
@@ -37,6 +42,16 @@ class OrderItemInputSerializer(serializers.Serializer):
 
 class OrderInputSerializer(serializers.Serializer):
     dealer_id = serializers.IntegerField()
+    items = OrderItemInputSerializer(many=True, allow_empty=False)
+
+    def validate_items(self, value):
+        skus = [item['sku'] for item in value]
+        if len(skus) != len(set(skus)):
+            raise serializers.ValidationError("Duplicate SKUs in order items are not allowed.")
+        return value
+
+class OrderUpdateInputSerializer(serializers.Serializer):
+    dealer_id = serializers.IntegerField(required=False)
     items = OrderItemInputSerializer(many=True, allow_empty=False)
 
     def validate_items(self, value):
