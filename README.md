@@ -109,6 +109,16 @@ curl http://localhost:8000/api/health/
 # Returns: {"status": "ok"}
 ```
 
+### 3. Start the Frontend Dashboard (Terminal 3)
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend will be available at `http://localhost:5173`.
+All API requests (`/api/*`) are automatically proxied to the Django server on port 8000.
+
 ---
 
 ## 6. Testing & Verification
@@ -148,7 +158,63 @@ Supplier sync  (start supplier_mock/mock_supplier.py and point SUPPLIER_API_URL 
 
 ---
 
-## 7. API Endpoints Summary
+## 7. Frontend Application (React + Vite + TypeScript)
+
+The `frontend/` directory contains an automotive dealer-management single-page application built with React, TypeScript, and Vite:
+
+### Tech Stack & Architecture
+- **Framework**: React 19 + TypeScript + Vite
+- **Routing**: React Router (`react-router-dom`)
+- **Icons**: Lucide React
+- **Styling**: Modern CSS Design System featuring a dark navy sidebar (`#0f172a`), royal blue primary accents (`#2563eb`), Inter & Outfit typography, and responsive cards/modals.
+- **API Communication**: Reusable API client with centralized error formatting. Vite development server proxies `/api/*` requests to `http://127.0.0.1:8000`, eliminating CORS issues during development.
+- **Environment Variables**:
+  - `VITE_API_BASE_URL`: Optional custom backend base URL (defaults to empty string, utilizing the local Vite proxy).
+
+### Feature Breakdown
+1. **Dashboard (`/`)**:
+   - Operational metric cards: Catalogue Products, Registered Dealers, Total Orders, and Low Stock Alerts derived from API data.
+   - Live backend health indicator badge polling `/api/health/`.
+   - Recent orders overview and low-stock parts watchlist.
+   - Quick action shortcuts to trigger creation wizards.
+2. **Products Catalogue (`/products`)**:
+   - Paginated catalogue table displaying SKU, Name, Category, Brand, Vehicle Fitment, Price, and Stock badge.
+   - Real-time search across SKU, product name, and brand.
+   - Category dropdown and vehicle fitment filters matching API specifications.
+   - Product detail modal showing full specifications.
+3. **Dealers Management (`/dealers`)**:
+   - Dealer accounts table showing dealer code, name, city, contact info, and credit limit.
+   - "Add Authorized Dealer" modal with client-side validation and duplicate dealer code error handling (`409 DUPLICATE`).
+   - Dealer detail modal showing recent purchase orders placed by the account.
+4. **Inventory Control (`/inventory`)**:
+   - Real-time warehouse inventory table with stock status badges (`HEALTHY`, `LOW STOCK`, `OUT OF STOCK`).
+   - Quick toggle to filter low-stock items (≤ 15 units).
+   - "Adjust Stock" modal calling `PUT /api/inventory/{sku}/` with quantity validation and audit reason.
+   - Confirmation dialog before submitting changes, followed by immediate table refresh.
+5. **Orders & Lifecycle Workflow (`/orders`)**:
+   - Filter orders by lifecycle status (`ALL`, `DRAFT`, `CONFIRMED`, `DISPATCHED`, `DELIVERED`, `CANCELLED`) and dealer.
+   - "Create Draft Order" modal:
+     - Select purchasing dealer.
+     - Add dynamic line items with product selector and available stock indicators.
+     - Quantity controls with provisional subtotal, 18% GST calculation, and grand total.
+     - Generates and attaches unique `Idempotency-Key` header with each submission.
+   - Order Details & Lifecycle Modal:
+     - Full item breakdown with unit prices, calculated 18% GST per line, and grand total.
+     - Contextual actions enforcing allowed status transitions:
+       - `DRAFT`: Confirm Order (atomically locks stock & price), Edit Items (`PUT`), Cancel Order.
+       - `CONFIRMED`: Dispatch Order, Cancel Order (restores stock back to inventory).
+       - `DISPATCHED`: Deliver Order.
+       - `DELIVERED` / `CANCELLED`: Terminal status display.
+     - User-friendly error messages for contract codes (`INSUFFICIENT_STOCK`, `INVALID_TRANSITION`, `ORDER_LOCKED`).
+6. **Supplier Sync (`/supplier-sync`)**:
+   - Connects to `POST /api/sync/supplier/` via Django backend.
+   - Pre-sync warning confirmation dialog to prevent accidental triggers.
+   - In-flight loading animation while backend iterates through paginated supplier feeds and rate limits.
+   - Summary cards displaying Created, Updated, Unchanged, and Rejected item counts with reasons.
+
+---
+
+## 8. API Endpoints Summary
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -173,7 +239,7 @@ Supplier sync  (start supplier_mock/mock_supplier.py and point SUPPLIER_API_URL 
 
 ---
 
-## 8. Critical Business Rules & Invariants
+## 9. Critical Business Rules & Invariants
 
 1. **Stock Protection**:
    - DRAFT order creation does not touch inventory.
@@ -197,6 +263,6 @@ Supplier sync  (start supplier_mock/mock_supplier.py and point SUPPLIER_API_URL 
 
 ---
 
-## 9. DECISIONS.md
+## 10. DECISIONS.md
 
 Refer to [`DECISIONS.md`](file:///c:/Yash/Projects/DealerDesk/DECISIONS.md) for detailed explanations of all eight design questions with exact file and line references.
