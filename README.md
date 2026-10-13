@@ -3,7 +3,7 @@
 **Track**: `django`
 **Role**: Python / Django Intern
 **Repository**: [https://github.com/yashwanth-63818/vikmo-dealerdesk](https://github.com/yashwanth-63818/vikmo-dealerdesk)
-**Video Walkthrough**: `https://youtu.be/placeholder-demo` *(see note below)*
+**Video Walkthrough**: `https://youtu.be/placeholder-demo` *(Pending — video walkthrough recording in progress)*
 
 DealerDesk is an ordering backend, inventory engine, and supplier catalogue synchronization platform for two-wheeler parts distributors across South India, built with Django and Django REST Framework on PostgreSQL.
 
@@ -265,4 +265,4 @@ The `frontend/` directory contains an automotive dealer-management single-page a
 
 ## 10. DECISIONS.md
 
-Refer to [`DECISIONS.md`](file:///c:/Yash/Projects/DealerDesk/DECISIONS.md) for detailed explanations of all eight design questions with exact file and line references.
+Refer to [`DECISIONS.md`](DECISIONS.md) for detailed explanations of all eight design questions with exact file and line references.
